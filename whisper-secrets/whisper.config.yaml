@@ -1,0 +1,38 @@
+version: 1
+scan_path: "."
+
+# AI Configuration
+ai:
+  primary: ollama
+  model: codellama:7b
+  confidence_threshold: 0.8
+
+# Scanning rules
+rules:
+  excluded_paths:
+    - "**/node_modules/**"
+    - "**/.git/**"
+    - "**/vendor/**"
+    - "**/__pycache__/**"
+  file_extensions:
+    - ".py"
+    - ".js"
+    - ".ts"
+    - ".java"
+    - ".go"
+    - ".rb"
+    - ".php"
+    - ".yaml"
+    - ".yml"
+    - ".json"
+    - ".env"
+  max_file_size: "5MB"
+
+# Secret patterns
+detectors:
+  patterns:
+    - "api_key"
+    - "password"
+    - "secret"
+    - "token"
+    - "credential"

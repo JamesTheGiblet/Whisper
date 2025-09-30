@@ -1,0 +1,31 @@
+[project]
+name = "whisper-secrets"
+version = "0.1.0"
+description = "AI-powered secret scanner with contextual analysis"
+authors = [
+    {name = "Whisper Team", email = "hello@whisper-secrets.com"},
+]
+dependencies = [
+    "click>=8.0.0",
+    "pyyaml>=6.0",
+    "requests>=2.25.0",
+    "pathspec>=0.11.0",
+    "tqdm>=4.60.0",
+    "regex>=2023.0.0",
+]
+requires-python = ">=3.8"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "mypy>=1.0.0",
+]
+
+[project.scripts]
+whisper = "whisper.cli:main"
+
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
