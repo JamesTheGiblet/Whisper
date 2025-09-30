@@ -1,19 +1,14 @@
 # 🔐 Whisper
 
-
 **Whisper keeps your secrets silent.**
-
 
 Whisper is an AI-powered secret scanner that helps developers and teams catch **real secrets** before they leak — without drowning you in false positives.
 
 Unlike regex-only tools, Whisper uses **contextual analysis** with local Ollama models to tell the difference between a dummy API key in test code and a live credential in production.
 
-
 ---
 
-
 ## 🚀 Quick Start
-
 
 ### Installation
 
@@ -35,7 +30,6 @@ brew install whisper-secrets
 
 ```
 
-
 ### Basic Usage
 
 ```bash
@@ -56,7 +50,6 @@ whisper scan . --exclude "**/test/**" --exclude "**/__tests__/**"
 
 ```
 
-
 ### First-Time Setup
 
 ```bash
@@ -72,19 +65,15 @@ whisper setup --model codellama:7b
 
 ```
 
-
 ---
-
 
 ## 🏗️ Architecture
 
-
 Whisper uses a smart two-stage detection system with privacy-first local AI:
-
 
 ### Detection Pipeline
 
-```
+```txt
 
 1. Candidate Detection → 2. Local AI Validation → 3. Cloud LLM (Edge Cases)
 
@@ -92,9 +81,7 @@ Whisper uses a smart two-stage detection system with privacy-first local AI:
 
 ```
 
-
 ### Component Responsibilities
-
 
 | Component | Role | Usage |
 
@@ -106,17 +93,13 @@ Whisper uses a smart two-stage detection system with privacy-first local AI:
 
 | **Regex Engine** | Candidate detection | Initial pattern matching |
 
-
 ---
 
-
 ## 🔧 Configuration
-
 
 ### Configuration File
 
 Create `whisper.config.yaml`:
-
 
 ```yaml
 
@@ -219,7 +202,6 @@ enabled: true
 
 ```
 
-
 ### Environment Variables
 
 ```bash
@@ -246,15 +228,11 @@ export WHISPER_MAX_FILE_SIZE="5MB"
 
 ```
 
-
 ---
-
 
 ## 🎯 Supported Secret Types
 
-
 Whisper detects a wide range of secrets through pattern matching and contextual understanding:
-
 
 ### API Keys & Tokens
 
@@ -268,7 +246,6 @@ Whisper detects a wide range of secrets through pattern matching and contextual 
 
 - **Generic**: High-entropy strings in credential contexts
 
-
 ### Database & Service Credentials
 
 - **Connection Strings**: `postgresql://`, `mongodb://`, `redis://`
@@ -276,7 +253,6 @@ Whisper detects a wide range of secrets through pattern matching and contextual 
 - **Passwords**: In configuration files, environment variables
 
 - **Private Keys**: RSA, SSH, PGP keys
-
 
 ### Custom Patterns
 
@@ -300,12 +276,7 @@ confidence: "medium"
 
 ```
 
-
----
-
-
 ## 🔄 Model Management
-
 
 ### Local Models
 
@@ -327,7 +298,6 @@ whisper models create --name my-company-secrets --base codellama:7b
 
 ```
 
-
 ### Model Updates
 
 ```bash
@@ -348,17 +318,11 @@ whisper update --retrain
 
 ```
 
-
----
-
-
 ## 🔌 Integrations
-
 
 ### Pre-commit Hook
 
 Add to `.pre-commit-config.yaml`:
-
 
 ```yaml
 
@@ -375,7 +339,6 @@ hooks:
 args: [--staged, --confidence-threshold, "0.9"]
 
 ```
-
 
 ### GitHub Action
 
@@ -406,7 +369,6 @@ run: whisper scan . --ci --fail-on high
 
 ```
 
-
 ### CI/CD Pipeline
 
 ```bash
@@ -427,12 +389,7 @@ whisper scan . --staged --diff HEAD~1
 
 ```
 
-
----
-
-
 ## 🎓 How It Works
-
 
 ### 1. Candidate Detection
 
@@ -452,7 +409,6 @@ candidates = [
 
 ```
 
-
 ### 2. Contextual Analysis
 
 The AI considers:
@@ -464,7 +420,6 @@ The AI considers:
 - **Code patterns**: Assignment vs usage vs examples
 
 - **Project structure**: Production code vs test vs documentation
-
 
 ### 3. Confidence Scoring
 
@@ -488,12 +443,7 @@ The AI considers:
 
 ```
 
-
----
-
-
 ## 📊 Performance & Accuracy
-
 
 ### Benchmark Results
 
@@ -506,7 +456,6 @@ The AI considers:
 | Regex-only | 72% | 88% | 12% |
 
 | Entropy-based | 65% | 92% | 23% |
-
 
 ### Resource Usage
 
@@ -527,12 +476,7 @@ RAM: 450MB (Ollama model included)
 
 ```
 
-
----
-
-
 ## 🔒 Privacy & Security
-
 
 ### Data Handling
 
@@ -543,7 +487,6 @@ RAM: 450MB (Ollama model included)
 - **AI Processing**: 95%+ handled by local Ollama instances
 
 - **Cloud Usage**: Only for model training with anonymized edge cases
-
 
 ### Air-Gapped Environments
 
@@ -567,12 +510,7 @@ whisper models import --file whisper-model.tar
 
 ```
 
-
----
-
-
 ## 🛠️ Development & Contributing
-
 
 ### Building from Source
 
@@ -599,7 +537,6 @@ python -m build
 
 ```
 
-
 ### Contributing Patterns
 
 ```bash
@@ -620,7 +557,6 @@ whisper contribute detector --language python --file my_detector.py
 
 ```
 
-
 ### Architecture Development
 
 ```python
@@ -637,15 +573,9 @@ return candidates
 
 ```
 
-
----
-
-
 ## 🐛 Troubleshooting
 
-
 ### Common Issues
-
 
 **Ollama not running:**
 
@@ -662,7 +592,6 @@ whisper scan . --ollama-host http://localhost:11434
 
 ```
 
-
 **Model not found:**
 
 ```bash
@@ -677,7 +606,6 @@ ollama pull codellama:7b
 whisper scan . --model llama3.1:8b
 
 ```
-
 
 **Performance issues:**
 
@@ -699,7 +627,6 @@ whisper scan . --exclude "**/node_modules/**"
 
 ```
 
-
 ### Debug Mode
 
 ```bash
@@ -715,21 +642,13 @@ whisper scan . --debug --log-file scan-debug.log
 
 ```
 
-
----
-
-
 ## 📄 License
-
 
 MIT License - see [LICENSE](LICENSE) for details.
 
-
 ---
 
-
 ## 🤝 Community & Support
-
 
 - **GitHub Issues**: [Report bugs](https://github.com/whisper-secrets/whisper/issues)
 
@@ -739,14 +658,10 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 - **Security**: [Report vulnerabilities](mailto:security@whisper-secrets.com)
 
-
 ---
-
 
 > **Whisper keeps your secrets silent — so you can code with peace of mind.** 🔐
 
-
 ---
 
-
-*Whisper is in active development. Features and configuration options may evolve based on community feedback and security research.* 
+*Whisper is in active development. Features and configuration options may evolve based on community feedback and security research.* Please refer to the [official documentation](https://docs.whisper-secrets.com) for the latest updates.# Whisper
