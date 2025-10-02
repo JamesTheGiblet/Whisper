@@ -41,6 +41,15 @@ DEFAULT_CONFIG: Dict[str, Any] = {
                     "BEGIN RSA PRIVATE KEY",
                 ],
             },
+            "base64": {
+                "enabled": True,
+                "min_length": 32,
+                "entropy_threshold": 4.5,
+            },
+            "url": {
+                "enabled": True,
+                "protocols": ["http", "https", "ftp", "sftp", "mysql", "postgresql"],
+            },
         },
     },
 }

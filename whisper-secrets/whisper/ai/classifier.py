@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from whisper.ai.ollama_client import OllamaClient
 from whisper.config.settings import load_config
@@ -10,12 +10,15 @@ class SecretClassifier:
     This class orchestrates the call to the underlying AI model.
     """
 
-    def __init__(self):
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
         """
         Initializes the classifier by loading the application configuration
         and setting up the appropriate AI client based on that config.
+        
+        Args:
+            config (Optional[Dict[str, Any]]): A configuration dictionary.
         """
-        self.config = load_config()
+        self.config = config if config is not None else load_config()
         ai_config = self.config.get("ai", {})
 
         # This is where logic could be added to switch between different AI providers

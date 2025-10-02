@@ -365,7 +365,7 @@ uses: whisper-secrets/setup-action@v1
 
 - name: Scan for secrets
 
-run: whisper scan . --ci --fail-on high
+ run: whisper scan . --ci --fail-on-finding
 
 ```
 
@@ -549,11 +549,6 @@ whisper report fp --file config.py --line 15 --reason "test fixture"
 # Suggest new pattern
 
 whisper contribute pattern --name "NewService" --pattern "new_[a-z0-9]{32}"
-
-
-# Add custom detector
-
-whisper contribute detector --language python --file my_detector.py
 
 ```
 

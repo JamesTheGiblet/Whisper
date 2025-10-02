@@ -1,0 +1,1 @@
+# This file makes the `detectors` directory a package, so pytest can discover tests within it.
