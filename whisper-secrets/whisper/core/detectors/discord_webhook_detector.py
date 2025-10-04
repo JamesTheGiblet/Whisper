@@ -26,4 +26,4 @@ class DiscordWebhookDetector:
         """
         for match in self.pattern.finditer(content):
             secret = match.group(0)
-            yield (secret, 0.8, "DiscordWebhookDetector", "discord_webhook", "Discord Webhook URL")
+            yield (secret, 0.8, "discord_webhook", "DiscordWebhookDetector", "Discord Webhook URL")

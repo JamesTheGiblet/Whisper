@@ -15,7 +15,7 @@ def test_discord_webhook_detector_finds_webhook():
     assert len(findings) == 1
     finding = findings[0]
     assert finding[0] == "https://discord.com/api/webhooks/1234567890/abcdefghijklmnopqrstuvwxyz"
-    assert finding[3] == "Discord Webhook URL"
+    assert finding[2] == "DiscordWebhookDetector"
     assert finding[3] == "Discord Webhook URL"
 
 

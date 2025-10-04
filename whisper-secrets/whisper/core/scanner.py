@@ -115,7 +115,7 @@ class FileScanner:
         confidence_threshold = self.config.get("ai", {}).get("confidence_threshold", 0.8)
 
         for candidate, confidence, detector_name, detector_type, reason in self._find_candidates_in_file(file_path):
-           # Ensure the detector provides a confidence score
+            # Ensure the detector provides a confidence score
             if confidence >= confidence_threshold:
                 context_line = reason #context line
                 line_num = 1
