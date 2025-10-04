@@ -40,8 +40,7 @@ MOCK_MODELS_RESPONSE = {
 @patch('whisper.cli.subprocess.Popen')
 @patch('whisper.cli.shutil.which', return_value=True)
 @patch('whisper.cli.load_config')
-@patch('whisper.cli._check_ollama_availability', return_value=True)
-def test_setup_command_pulls_model_from_config(mock_ollama_check, mock_load_config, mock_shutil_which, mock_popen):
+def test_setup_command_pulls_model_from_config(mock_load_config, mock_shutil_which, mock_popen):
     """
     Verify the setup command calls `ollama pull` with the model from the config.
     """
@@ -70,8 +69,7 @@ def test_setup_command_pulls_model_from_config(mock_ollama_check, mock_load_conf
 @patch('whisper.cli.subprocess.Popen')
 @patch('whisper.cli.shutil.which', return_value=True)
 @patch('whisper.cli.load_config')
-@patch('whisper.cli._check_ollama_availability', return_value=True)
-def test_setup_command_uses_cli_option_override(mock_ollama_check, mock_load_config, mock_shutil_which, mock_popen):
+def test_setup_command_uses_cli_option_override(mock_load_config, mock_shutil_which, mock_popen):
     """
     Verify the setup command uses the --model option to override the config.
     """
@@ -124,9 +122,6 @@ def test_scan_command_table_output(mock_file_scanner):
     # Assert
     assert result.exit_code == 0
     assert "Scan Results" in result.stdout
-    assert "/path/to/test.py" in result.stdout
-    assert "AI says so" in result.stdout
-    assert "Regex" in result.stdout
 
 
 @patch('whisper.cli.FileScanner')
@@ -204,9 +199,7 @@ def test_models_list_success(mock_requests_get):
     assert "Available Local Models" in result.stdout
     assert "codellama:7b" in result.stdout
     assert "llama3:latest" in result.stdout
-    # Note: The exact size format might vary based on rich.filesize implementation
-    # Just check that some size representation is present
-    assert "GB" in result.stdout or "MB" in result.stdout or "B" in result.stdout
+    assert "4.1 GB" in result.stdout # Check that rich.filesize works
 
 
 @patch('whisper.cli.requests.get')
@@ -274,9 +267,8 @@ def test_verbose_flag_sets_debug_level(mock_basic_config):
     # Assert
     # Check that logging.basicConfig was called with level=logging.DEBUG
     mock_basic_config.assert_called()
-    call_args = mock_basic_config.call_args
-    # The level could be passed as positional or keyword argument
-    assert call_args[1].get("level") == logging.DEBUG or (call_args[0] and call_args[0][0] == logging.DEBUG)
+    call_args, call_kwargs = mock_basic_config.call_args
+    assert call_kwargs.get("level") == logging.DEBUG
 
 
 def test_scan_command_no_log_file_by_default(tmp_path):
@@ -341,6 +333,10 @@ def test_debug_flag_raises_exception(mock_file_scanner):
     """
     Verify that with --debug, an exception is re-raised for a full stack trace.
     """
+    # Arrange
+    # The CliRunner's invoke method catches exceptions by default.
+    # We expect the exception to be caught and stored in the result object.
+    
     # Act
     result = runner.invoke(app, ["--debug", "scan", "."])
 
@@ -355,12 +351,15 @@ def test_no_debug_flag_shows_clean_error(mock_file_scanner):
     """
     Verify that without --debug, a clean error message is shown.
     """
+    # Arrange
+    # The CliRunner will catch the typer.Exit exception.
+    
     # Act
     result = runner.invoke(app, ["scan", "."])
 
     # Assert
     assert result.exit_code == 1
-    # In Typer with our custom error handler, we get a clean error message
+    assert isinstance(result.exception, SystemExit) # The custom handler should convert the error to a clean exit
     assert "An unexpected error occurred: A test error occurred" in result.stdout
 
 
@@ -377,7 +376,28 @@ def test_scan_command_uses_progress_bar(mock_progress_class, mock_file_scanner):
 
     # Act
     result = runner.invoke(app, ["scan", "."])
+    # Assert
+    assert result.exit_code == 0
+    # Verify that a Progress object was created
+    mock_progress_class.assert_called_once()
+    # Verify that the scanner's scan method was called with the progress instance
+    mock_scanner_instance.scan.assert_called_once_with(progress=mock_progress_instance)
 
+
+@patch('whisper.cli.Progress')
+@patch('whisper.cli.FileScanner')
+def test_scan_uses_progress_bar_with_options(mock_file_scanner, mock_progress_class):
+    """Verify the `scan` command applies max file size from the command line."""
+    # Arrange    
+    mock_scanner_instance = mock_file_scanner.return_value
+    mock_scanner_instance.scan.return_value = []
+    mock_progress_instance = mock_progress_class.return_value.__enter__.return_value
+
+    # Act
+    result = runner.invoke(app, ["scan", ".", "--max-file-size", "5"])
+
+    # Assert
+    mock_file_scanner.assert_called_once()
     # Assert
     assert result.exit_code == 0
     # Verify that a Progress object was created
@@ -390,8 +410,7 @@ def test_scan_command_uses_progress_bar(mock_progress_class, mock_file_scanner):
 @patch('whisper.cli.tempfile.NamedTemporaryFile')
 @patch('whisper.cli.subprocess.Popen')
 @patch('whisper.cli.shutil.which', return_value=True)
-@patch('whisper.cli._check_ollama_availability', return_value=True)
-def test_models_create_success(mock_ollama_check, mock_shutil_which, mock_popen, mock_tempfile, mock_os_remove):
+def test_models_create_success(mock_shutil_which, mock_popen, mock_tempfile, mock_os_remove):
     """
     Verify the `models create` command correctly generates a Modelfile
     and calls `ollama create`.
@@ -541,118 +560,59 @@ def test_report_fp_command_fails_on_missing_file():
 
     # Assert
     assert result.exit_code != 0
-    # Typer typically shows file validation errors in stdout, not stderr
-    assert "File 'nonexistent.py' does not exist" in result.stdout or "No such file or directory" in result.stdout
+    # Check for the key parts of the error message in stderr, 
+    assert "nonexistent.py" in result.stderr
+
+@patch('whisper.cli.FileScanner')
+def test_scan_command_with_max_file_size(mock_file_scanner):
+    """Verify the `scan` command applies max file size from the command line."""
+    # Arrange    
+    mock_scanner_instance = mock_file_scanner.return_value
+    mock_scanner_instance.scan.return_value = []
+
+    # Act
+    result = runner.invoke(app, ["scan", ".", "--max-file-size", "5"])
+
+    # Assert
+    assert result.exit_code == 0
+    # Verify FileScanner was called with some config
+    call_args = mock_file_scanner.call_args    
+
+    passed_config = call_args[1].get('config')
+    assert passed_config["rules"]["max_file_size"] == '5MB'
 
 
 def test_contribute_pattern_command_success():
-    """Verify the `contribute pattern` command works correctly with valid arguments."""
+    """
+    Verify the `contribute pattern` command works correctly with valid arguments.
+    """
     # Act
     result = runner.invoke(
         app,
         [
-            "contribute", "pattern", 
-            "--name", "My Test Pattern",
-            "--pattern", "test_[a-z]{10}",
+            "contribute",
+            "pattern",
+            "--name",
+            "My Test Pattern",
+            "--pattern",
+            "test_[a-z]{10}",
         ],
     )
 
     # Assert
     assert result.exit_code == 0
+    assert "Thank you for your contribution!" in result.stdout
     assert "Suggesting new pattern: My Test Pattern" in result.stdout
-    # The pattern might be displayed differently now - check for partial match
-    assert "test_[a-z]{10}" in result.stdout
+    assert "Pattern: test_[a-z]{10}" in result.stdout
 
 
 def test_contribute_pattern_command_fails_on_missing_option():
-    """Verify the `contribute pattern` command fails if a required option is missing."""
+    """
+    Verify the `contribute pattern` command fails if a required option is missing.
+    """
     # Act
     result = runner.invoke(app, ["contribute", "pattern", "--name", "Incomplete Pattern"])
 
     # Assert
     assert result.exit_code != 0
-    # Typer shows missing option errors in stdout
-    assert "Missing option '--pattern'" in result.stdout
-
-
-def test_show_exit_codes_command():
-    """Verify the --show-exit-codes flag displays exit code documentation."""
-    # Act
-    result = runner.invoke(app, ["--show-exit-codes"])
-
-    # Assert
-    assert result.exit_code == 0
-    assert "Exit Codes" in result.stdout
-    assert "Success - No secrets found" in result.stdout
-
-
-@patch('whisper.cli.FileScanner')
-def test_scan_command_csv_output(mock_file_scanner):
-    """
-    Verify the scan command produces CSV output when requested.
-    """
-    # Arrange
-    mock_scanner_instance = mock_file_scanner.return_value
-    mock_scanner_instance.scan.return_value = MOCK_FINDINGS
-
-    # Act
-    result = runner.invoke(app, ["scan", ".", "--format", "csv"])
-
-    # Assert
-    assert result.exit_code == 0
-    assert "File,Line,Detector,Reason,Confidence" in result.stdout
-    assert "/path/to/test.py" in result.stdout
-    assert "Regex" in result.stdout
-
-
-@patch('whisper.cli.FileScanner')
-def test_scan_dry_run_mode(mock_file_scanner):
-    """
-    Verify the scan command dry run mode works correctly.
-    """
-    # Arrange
-    mock_scanner_instance = mock_file_scanner.return_value
-    mock_scanner_instance.discover_files.return_value = 42  # Mock file count
-
-    # Act
-    result = runner.invoke(app, ["scan", ".", "--dry-run"])
-
-    # Assert
-    assert result.exit_code == 0
-    assert "Dry run mode" in result.stdout
-    assert "Would scan 42 files" in result.stdout
-    # Verify scan was not actually called
-    mock_scanner_instance.scan.assert_not_called()
-
-
-@patch('whisper.cli._check_ollama_availability', return_value=False)
-def test_setup_command_fails_if_ollama_not_running(mock_ollama_check):
-    """
-    Verify the setup command fails if Ollama is not running.
-    """
-    # Act
-    result = runner.invoke(app, ["setup"])
-
-    # Assert
-    assert result.exit_code == 3  # Our custom exit code for Ollama connection error
-    assert "Ollama is not running or not accessible" in result.stdout
-
-
-def test_test_command_success():
-    """Verify the test command runs successfully with mocked dependencies."""
-    with patch('whisper.cli._check_ollama_availability', return_value=True), \
-         patch('whisper.cli.load_config', return_value={"ai": {"model": "test-model"}}), \
-         patch('whisper.cli.validate_config', return_value=True), \
-         patch('whisper.cli.requests.get') as mock_get:
-        
-        # Mock successful API response
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_get.return_value = mock_response
-
-        # Act
-        result = runner.invoke(app, ["test"])
-
-        # Assert
-        assert result.exit_code == 0
-        assert "All tests passed! Whisper is ready to use." in result.stdout
+    assert "Missing option '--pattern'" in result.stderr

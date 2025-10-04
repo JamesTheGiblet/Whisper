@@ -5,6 +5,7 @@ from enum import Enum
 import json
 import importlib.metadata
 import logging
+from rich.markup import escape
 from rich.console import Console
 from rich.table import Table
 from rich.filesize import decimal
@@ -16,11 +17,6 @@ from contextlib import contextmanager
 import yaml
 import os
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
-import sys
-import csv
-from pydantic import BaseModel, validator
-from typing import Optional as Opt
-from datetime import datetime
 
 from whisper.core.scanner import FileScanner
 from whisper.config.settings import load_config
@@ -28,18 +24,6 @@ from whisper.config.settings import load_config
 class OutputFormat(str, Enum):
     table = "table"
     json = "json"
-    csv = "csv"
-    sarif = "sarif"
-
-# Exit codes documentation
-EXIT_CODES = {
-    0: "Success - No secrets found or operation completed successfully",
-    1: "Error - General error or secrets found (with --fail-on-finding)",
-    2: "Configuration error", 
-    3: "Ollama connection error",
-    4: "Model not found",
-    5: "Validation error",
-}
 
 app = typer.Typer(
     name="whisper",
@@ -50,40 +34,6 @@ console = Console()
 
 # Global flag for debug mode
 DEBUG = False
-
-# Pydantic models for configuration validation
-class AIConfig(BaseModel):
-    model: str
-    confidence_threshold: float = 0.7
-    
-    @validator('confidence_threshold')
-    def validate_confidence(cls, v):
-        if not 0.0 <= v <= 1.0:
-            raise ValueError('confidence_threshold must be between 0.0 and 1.0')
-        return v
-
-class ScannerConfig(BaseModel):
-    max_file_size_mb: int = 10
-    excluded_paths: List[str] = []
-
-def validate_config(config: dict) -> bool:
-    """Validate configuration using Pydantic models."""
-    try:
-        AIConfig(**config.get('ai', {}))
-        ScannerConfig(**config.get('scanner', {}))
-        return True
-    except Exception as e:
-        logging.error(f"Configuration validation failed: {e}")
-        return False
-
-def get_exit_code_documentation():
-    """Return documentation for exit codes."""
-    table = Table(title="Exit Codes")
-    table.add_column("Code", style="cyan")
-    table.add_column("Meaning", style="white")
-    for code, meaning in EXIT_CODES.items():
-        table.add_row(str(code), meaning)
-    return table
 
 @contextmanager
 def _debug_exception_handler():
@@ -97,61 +47,6 @@ def _debug_exception_handler():
         else:
             console.print(f"[bold red]An unexpected error occurred:[/bold red] {e}", style="red")
             raise typer.Exit(code=1)
-
-def _check_ollama_availability():
-    """Check if Ollama is available and responsive."""
-    host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-    try:
-        response = requests.get(f"{host.rstrip('/')}/api/version", timeout=5)
-        response.raise_for_status()
-        return True
-    except requests.exceptions.RequestException:
-        return False
-
-def is_binary_file(file_path: Path) -> bool:
-    """Check if a file is binary."""
-    try:
-        with open(file_path, 'tr') as check_file:
-            check_file.read()
-            return False
-    except UnicodeDecodeError:
-        return True
-
-def should_scan_file(file_path: Path, max_size_mb: int = 10) -> bool:
-    """Determine if a file should be scanned."""
-    if file_path.stat().st_size > max_size_mb * 1024 * 1024:
-        logging.debug(f"Skipping large file: {file_path}")
-        return False
-    if is_binary_file(file_path):
-        logging.debug(f"Skipping binary file: {file_path}")
-        return False
-    return True
-
-def setup_logging(verbose: bool, debug: bool, log_file: Optional[Path] = None):
-    """Centralized logging setup."""
-    log_level = logging.DEBUG if verbose or debug else logging.INFO
-    
-    # Clear any existing handlers
-    for handler in logging.root.handlers[:]:
-        logging.root.removeHandler(handler)
-    
-    if log_file:
-        logging.basicConfig(
-            level=log_level,
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-            filename=str(log_file),
-            filemode='a',  # Use 'a' for append instead of 'w'
-            force=True,
-        )
-    else:
-        from rich.logging import RichHandler
-        logging.basicConfig(
-            level=log_level,
-            format="%(message)s",
-            datefmt="[%X]",
-            handlers=[RichHandler(show_path=debug)],  # Show path in debug mode
-            force=True,
-        )
 
 # Create a new Typer app for the "models" subcommand
 models_app = typer.Typer(name="models", help="Manage local AI models.")
@@ -217,24 +112,40 @@ def main(
         "--debug",
         help="Enable debug mode (show full stack traces on errors).",
     ),
-    show_exit_codes: bool = typer.Option(
-        False,
-        "--show-exit-codes",
-        help="Show documentation for exit codes and exit.",
-    ),
 ):
     """Whisper keeps your secrets silent."""
     global DEBUG
     DEBUG = debug
-    
-    if show_exit_codes:
-        console.print(get_exit_code_documentation())
-        raise typer.Exit(code=0)
-    
-    setup_logging(verbose, debug, log_file)
+    log_level = logging.DEBUG if verbose else logging.INFO
 
     if log_file:
+        # When logging to a file, use a detailed format.
+        logging.basicConfig(
+            level=log_level,
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            filename=str(log_file),
+            filemode='w',
+            force=True,  # This allows re-configuring the logger in tests
+        )
         console.log(f"Logging to file: [cyan]{log_file}[/cyan]")
+    else:
+        # Keep console output clean and use rich for formatting.
+        from rich.logging import RichHandler
+        logging.basicConfig(
+            level=log_level,
+            format="%(message)s",
+            datefmt="[%X]",
+            handlers=[RichHandler(show_path=False)],
+            force=True,  # This allows re-configuring the logger in tests
+        )
+
+EXIT_CODES = {
+    0: "Success - No secrets found or operation completed successfully",
+    1: "Error - General error or secrets found (with --fail-on-finding)",
+    2: "Configuration error", 
+    3: "Ollama connection error",
+    4: "Model not found",
+}
 
 @app.command()
 def scan(
@@ -261,6 +172,12 @@ def scan(
         "-e",
         help="Paths to exclude (glob patterns). Can be used multiple times.",
     ),
+    max_file_size: Optional[str] = typer.Option(
+        None,
+        "--max-file-size",
+        help="Override the maximum file size to scan (e.g., '10MB', '1G').",
+    ),
+
     format: OutputFormat = typer.Option(
         OutputFormat.table,
         "--format",
@@ -274,26 +191,11 @@ def scan(
         "--fail",
         help="Exit with a non-zero status code if any secrets are found.",
     ),
-    dry_run: bool = typer.Option(
-        False,
-        "--dry-run",
-        help="Show what would be scanned without actually scanning.",
-    ),
-    max_file_size: int = typer.Option(
-        10,
-        "--max-file-size",
-        help="Maximum file size to scan in MB.",
-    ),
 ):
     """Scan a directory or file for secrets."""
     with _debug_exception_handler():
         # Load the base configuration
-        config = load_config()
-        
-        # Validate configuration
-        if not validate_config(config):
-            console.print("[bold red]Error:[/bold red] Invalid configuration.", style="red")
-            raise typer.Exit(code=2)
+        config = load_config()            
 
         # Apply CLI overrides
         if confidence_threshold is not None:
@@ -304,116 +206,47 @@ def scan(
             config["rules"]["excluded_paths"].extend(exclude)
             logging.info(f"Adding exclusion patterns: {', '.join(exclude)}")
 
+        if max_file_size:
+            value_to_set = max_file_size
+            if value_to_set.isdigit():
+                value_to_set += "MB"
+
+            config["rules"]["max_file_size"] = value_to_set
+            logging.info(f"Overriding max file size to: {value_to_set}")
         if format == OutputFormat.table:
             console.print(f"🔐 Scanning [cyan]{path}[/cyan]...")
 
-        if dry_run:
-            console.print("[yellow]Dry run mode - no actual scanning will be performed[/yellow]")
-            # Simulate file discovery
-            scanner = FileScanner(str(path), config=config)
-            try:
-                # Try to use discover_files if it exists, otherwise estimate
-                file_count = scanner.discover_files()
-                console.print(f"Would scan {file_count} files")
-            except Exception:
-                console.print("Would scan files (file discovery not available)")
-            raise typer.Exit(code=0)
-
-        with Progress(SpinnerColumn(),TextColumn("[progress.description]{task.description}"),BarColumn(),TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),TextColumn("({task.completed} of {task.total} files)"),
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TextColumn("({task.completed} of {task.total} files)"),
             console=console,
             transient=True, # Hides the progress bar upon completion
         ) as progress:
-            scanner = FileScanner(str(path), config=config)
+            scanner = FileScanner(path, config=config)
             findings = scanner.scan(progress=progress)
 
         if not findings:
             if format == OutputFormat.table:
                 console.print("✅ No secrets found.", style="green")
-            elif format == OutputFormat.json:
-                console.print("[]")
-            elif format == OutputFormat.csv:
-                # Print empty CSV with headers
-                writer = csv.writer(sys.stdout)
-                writer.writerow(["File", "Line", "Detector", "Reason", "Confidence"])
-            else:  # SARIF
-                console.print(json.dumps({
-                    "version": "2.1.0",
-                    "runs": [{
-                        "tool": {
-                            "driver": {
-                                "name": "Whisper",
-                                "informationUri": "https://github.com/your-org/whisper"
-                            }
-                        },
-                        "results": []
-                    }]
-                }, indent=2))
-            raise typer.Exit(code=0)
+            else:
+                console.print("[]") # Print an empty JSON array
+            # Don't exit here - let the command complete normally
+            return
 
         if format == OutputFormat.json:
             console.print(json.dumps(findings, indent=2))
-        elif format == OutputFormat.csv:
-            writer = csv.writer(sys.stdout)
-            writer.writerow(["File", "Line", "Detector", "Reason", "Confidence"])
-            for finding in findings:
-                writer.writerow([
-                    finding["file"],
-                    finding["line"],
-                    finding["detector"],
-                    finding["reason"],
-                    finding.get("confidence", "N/A")
-                ])
-        elif format == OutputFormat.sarif:
-            # SARIF format for CI/CD integration
-            sarif_output = {
-                "version": "2.1.0",
-                "runs": [{
-                    "tool": {
-                        "driver": {
-                            "name": "Whisper",
-                            "informationUri": "https://github.com/your-org/whisper",
-                            "rules": []
-                        }
-                    },
-                    "results": [
-                        {
-                            "ruleId": finding["detector"],
-                            "message": {
-                                "text": finding["reason"]
-                            },
-                            "locations": [{
-                                "physicalLocation": {
-                                    "artifactLocation": {
-                                        "uri": finding["file"]
-                                    },
-                                    "region": {
-                                        "startLine": finding["line"],
-                                        "startColumn": 1
-                                    }
-                                }
-                            }]
-                        } for finding in findings
-                    ]
-                }]
-            }
-            console.print(json.dumps(sarif_output, indent=2))
-        else:  # Default to table
+        else: # Default to table
             console.print(f"🚨 Found {len(findings)} potential secret(s):", style="bold red")
             table = Table(title="Scan Results")
             table.add_column("File", style="cyan")
             table.add_column("Line", style="magenta")
             table.add_column("Detector", style="green")
             table.add_column("Reason", style="yellow")
-            table.add_column("Confidence", style="white")
             for finding in findings:
-                confidence = finding.get("confidence", "N/A")
-                table.add_row(
-                    finding["file"], 
-                    str(finding["line"]), 
-                    finding["detector"], 
-                    finding["reason"],
-                    str(confidence)
-                )
+                table.add_row(finding["file"], str(finding["line"]), finding["detector"], finding["reason"])
             console.print(table)
         
         if fail_on_finding:
@@ -433,11 +266,6 @@ def setup(
     Download and set up the required AI model from Ollama.
     """
     with _debug_exception_handler():
-        if not _check_ollama_availability():
-            console.print("[bold red]Error:[/bold red] Ollama is not running or not accessible.", style="red")
-            console.print("Please ensure Ollama is installed and running.")
-            raise typer.Exit(code=3)
-
         config = load_config()
         # Use the provided model, or fall back to the one in the config
         model_to_pull = model or config.get("ai", {}).get("model")
@@ -500,7 +328,7 @@ def list_models():
         except requests.exceptions.ConnectionError:
             console.print(f"[bold red]Error:[/bold red] Could not connect to Ollama at [cyan]{host}[/cyan].", style="red")
             console.print("Please ensure the Ollama application is running.")
-            raise typer.Exit(code=3)
+            raise typer.Exit(code=1)
         except requests.exceptions.RequestException as e:
             console.print(f"[bold red]Error:[/bold red] Failed to query Ollama models API: {e}", style="red")
             raise typer.Exit(code=1)
@@ -508,7 +336,8 @@ def list_models():
         models = data.get("models", [])
         if not models:
             console.print("✅ No local models found.", style="green")
-            raise typer.Exit(code=0)
+            # Don't exit with error code when no models are found - this is a valid state
+            return
 
         table = Table(title="Available Local Models")
         table.add_column("Name", style="cyan", no_wrap=True)
@@ -550,7 +379,7 @@ def use_model(
                     config_data = yaml.safe_load(f) or {}
             except (IOError, yaml.YAMLError) as e:
                 console.print(f"[bold red]Error:[/bold red] Could not read or parse config file at [cyan]{config_path}[/cyan]. Error: {e}", style="red")
-                raise typer.Exit(code=2)
+                raise typer.Exit(code=1)
 
         # Update the model in the config data, creating the 'ai' key if it doesn't exist.
         config_data.setdefault('ai', {})['model'] = model_name
@@ -562,7 +391,7 @@ def use_model(
             console.print(f"✅ Default model set to [cyan]{model_name}[/cyan] in [yellow]{config_path}[/yellow].")
         except IOError as e:
             console.print(f"[bold red]Error:[/bold red] Could not write to config file at [cyan]{config_path}[/cyan]. Error: {e}", style="red")
-            raise typer.Exit(code=2)
+            raise typer.Exit(code=1)
 
 # A default Modelfile template.
 MODELFILE_TEMPLATE = """
@@ -585,11 +414,6 @@ def create_model(
     Create a new custom model specialized for secret detection.
     """
     with _debug_exception_handler():
-        if not _check_ollama_availability():
-            console.print("[bold red]Error:[/bold red] Ollama is not running or not accessible.", style="red")
-            console.print("Please ensure Ollama is installed and running.")
-            raise typer.Exit(code=3)
-
         if not shutil.which("ollama"):
             console.print("[bold red]Error:[/bold red] `ollama` command not found.", style="red")
             console.print("Please install Ollama and ensure it's in your system's PATH.")
@@ -626,61 +450,6 @@ def create_model(
         finally:
             # Ensure the temporary Modelfile is always cleaned up
             os.remove(modelfile_path)
-
-@app.command()
-def test():
-    """Test the Whisper installation and configuration."""
-    console.print("🧪 Testing Whisper configuration...")
-    
-    tests_passed = 0
-    total_tests = 4
-    
-    # Test 1: Ollama connection
-    if _check_ollama_availability():
-        console.print("✅ Ollama connection: OK")
-        tests_passed += 1
-    else:
-        console.print("❌ Ollama connection: FAILED")
-    
-    # Test 2: Config loading
-    try:
-        config = load_config()
-        console.print("✅ Configuration loading: OK")
-        tests_passed += 1
-    except Exception as e:
-        console.print(f"❌ Configuration loading: FAILED - {e}")
-    
-    # Test 3: Config validation
-    try:
-        config = load_config()
-        if validate_config(config):
-            console.print("✅ Configuration validation: OK")
-            tests_passed += 1
-        else:
-            console.print("❌ Configuration validation: FAILED")
-    except Exception as e:
-        console.print(f"❌ Configuration validation: FAILED - {e}")
-    
-    # Test 4: Model availability
-    try:
-        host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-        response = requests.get(f"{host.rstrip('/')}/api/tags", timeout=5)
-        if response.status_code == 200:
-            console.print("✅ Model API access: OK")
-            tests_passed += 1
-        else:
-            console.print("❌ Model API access: FAILED")
-    except Exception as e:
-        console.print(f"❌ Model API access: FAILED - {e}")
-    
-    console.print(f"\n📊 Tests passed: {tests_passed}/{total_tests}")
-    
-    if tests_passed == total_tests:
-        console.print("🎉 All tests passed! Whisper is ready to use.", style="green")
-        raise typer.Exit(code=0)
-    else:
-        console.print("💥 Some tests failed. Please check your setup.", style="red")
-        raise typer.Exit(code=1)
 
 @update_app.callback(invoke_without_command=True)
 def update(
@@ -748,9 +517,6 @@ def contribute_pattern(
     with _debug_exception_handler():
         console.print("🙏 Thank you for your contribution!")
         console.print(f"Suggesting new pattern: [cyan]{name}[/cyan]")
-        console.print("Pattern:", f"[yellow]{pattern}[/yellow]")
+        console.print("Pattern:", f"[yellow]{escape(pattern)}[/yellow]")
         # Placeholder for future implementation
         console.print("\n[italic]Note: This is currently a placeholder. In the future, this could open a browser to create a contribution pull request.[/italic]")
-
-if __name__ == "__main__":
-    app()
