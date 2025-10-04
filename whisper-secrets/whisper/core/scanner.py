@@ -105,8 +105,8 @@ class FileScanner:
         except (IOError, UnicodeDecodeError):
             # Silently ignore files that can't be opened or read
             pass
-
-    def _process_file(self, file_path: Path) -> List[Dict[str, Any]]:
+            
+    def _process_file(self, file_path: Path) -> List[Dict[str, Any]]:    
         """
         Processes a single file: finds candidates and classifies them.
         This method is designed to be run in a separate thread.
@@ -114,10 +114,18 @@ class FileScanner:
         file_findings = []
         confidence_threshold = self.config.get("ai", {}).get("confidence_threshold", 0.8)
 
-        for candidate, line_num, context_line, detector_name in self._find_candidates_in_file(file_path):
-            ai_result = self.classifier.classify(candidate=candidate, context=context_line)
+        for candidate, confidence, detector_name, detector_type, reason in self._find_candidates_in_file(file_path):
+           # Ensure the detector provides a confidence score
+            if confidence >= confidence_threshold:
+                context_line = reason #context line
+                line_num = 1
+                if reason:
+                    context_line = reason
+                else:
+                    context_line = ""
 
-            if ai_result.get("is_secret"):
+                ai_result = self.classifier.classify(candidate=candidate, context=context_line)
+
                 file_findings.append({
                     "file": str(file_path.resolve()),
                     "line": line_num,
@@ -126,6 +134,7 @@ class FileScanner:
                     "detector": detector_name,
                 })
         return file_findings
+
 
     def scan(self, progress: Optional[Progress] = None) -> List[Dict[str, Any]]:
         """

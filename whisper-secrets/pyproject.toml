@@ -29,3 +29,4 @@ whisper = "whisper.cli:main"
 [build-system]
 requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
+discord_webhook = "whisper.core.detectors.discord_webhook_detector:DiscordWebhookDetector"

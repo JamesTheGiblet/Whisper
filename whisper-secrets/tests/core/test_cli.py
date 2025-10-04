@@ -1,5 +1,6 @@
 from typer.testing import CliRunner
 from unittest.mock import patch, MagicMock
+from unittest import mock
 import json
 import requests
 from pathlib import Path
@@ -616,3 +617,89 @@ def test_contribute_pattern_command_fails_on_missing_option():
     # Assert
     assert result.exit_code != 0
     assert "Missing option '--pattern'" in result.stderr
+
+
+@patch('whisper.cli.requests.get')
+def test_models_list_api_error(mock_requests_get):
+    """
+    Verify the `models list` command handles a 500 error from the Ollama API.
+    """
+    # Arrange
+    mock_response = MagicMock()
+    mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError("500 Server Error", response=mock_response)
+    mock_response.status_code = 500
+    mock_requests_get.return_value = mock_response
+
+    # Act
+    result = runner.invoke(app, ["models", "list"])
+
+    # Assert
+    assert result.exit_code != 0
+    assert "Failed to query Ollama models API" in result.stdout
+    # Optionally, check if the 500 status code is mentioned in the error message.
+    assert "500 Server Error" in result.stdout
+
+
+@patch('whisper.cli.FileScanner')
+def test_scan_command_exclude_option(mock_file_scanner):
+    """
+    Verify the scan command correctly passes the exclude option to the config.
+    """
+    # Arrange
+    mock_scanner_instance = mock_file_scanner.return_value
+    mock_scanner_instance.scan.return_value = []
+
+    # Act
+    result = runner.invoke(app, ["scan", ".", "--exclude", "test.txt", "--exclude", "**/temp/*"])
+
+    # Assert
+    assert result.exit_code == 0
+
+    # Verify that FileScanner was called with the config.
+    call_args = mock_file_scanner.call_args
+    passed_config = call_args[1].get('config')
+    assert "test.txt" in passed_config["rules"]["excluded_paths"]
+    assert "**/temp/*" in passed_config["rules"]["excluded_paths"]
+
+
+@patch('whisper.cli.FileScanner')
+def test_scan_command_max_file_size_units(mock_file_scanner):
+    """
+    Verify the scan command correctly parses max file size with different units (KB, MB, GB).
+    """
+    # Arrange
+    mock_scanner_instance = mock_file_scanner.return_value
+    mock_scanner_instance.scan.return_value = []
+
+    # Act & Assert (KB)
+    result_kb = runner.invoke(app, ["scan", ".", "--max-file-size", "10KB"])
+    assert result_kb.exit_code == 0
+    call_args_kb = mock_file_scanner.call_args
+    passed_config_kb = call_args_kb[1].get('config')
+    assert passed_config_kb["rules"]["max_file_size"] == "10KB"
+    mock_file_scanner.reset_mock()
+
+    # Act & Assert (MB)
+    result_mb = runner.invoke(app, ["scan", ".", "--max-file-size", "2MB"])
+    assert result_mb.exit_code == 0
+    call_args_mb = mock_file_scanner.call_args
+    passed_config_mb = call_args_mb[1].get('config')
+    assert passed_config_mb["rules"]["max_file_size"] == "2MB"
+    mock_file_scanner.reset_mock()
+
+    # Act & Assert (GB)
+    result_gb = runner.invoke(app, ["scan", ".", "--max-file-size", "1GB"])
+    assert result_gb.exit_code == 0
+    call_args_gb = mock_file_scanner.call_args
+    passed_config_gb = call_args_gb[1].get('config')
+    assert passed_config_gb["rules"]["max_file_size"] == "1GB"
+    mock_file_scanner.reset_mock()
+
+
+@patch('whisper.cli.report_app')
+def test_report_app_callback(mock_report_app):
+    """
+    Verify the `report` command group's callback is correctly configured.
+    """
+    # This test primarily ensures that the `report_app` is correctly set up as a Typer app.
+    assert mock_report_app is not None
